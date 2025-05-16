@@ -1,7 +1,9 @@
 import customtkinter as ctk
-from helper import *
+from tkinter import filedialog
 from methods import embed_watermark, extract_watermark, detect_tampering
 import os
+import matplotlib.pyplot as plt
+from PIL import Image, ImageTk
 
 
 class App(ctk.CTk):
@@ -22,6 +24,9 @@ class App(ctk.CTk):
         self.watermarked_image_path = None
         self.original_watermark_path = None
 
+        ####FOR TAMPERING DETECTION#####
+        self.subject_image_path = None
+
         self.init_start_page()
 
     def clear_window(self):
@@ -37,7 +42,7 @@ class App(ctk.CTk):
         embedder_btn = ctk.CTkButton(
             self, text="Watermark Embedder", width=200, command=self.go_to_embedder
         )
-        embedder_btn.grid(pady=10)
+        embedder_btn.grid(pady=10, padx=50)
 
         verifier_btn = ctk.CTkButton(
             self, text="Authenticity Verifier", width=200, command=self.go_to_verifier
@@ -84,25 +89,65 @@ class App(ctk.CTk):
                 text=f"❌ Error: {str(e)}", text_color="red"
             )
 
-        def handle_verify(self):
-            if not self.watermarked_image_path or not self.original_watermark_path:
-                self.embed_status_label.configure(
-                    text="❌ Please select all paths.", text_color="red"
-                )
-                return
+    def handle_verify(self):
+        if not self.watermarked_image_path or not self.original_watermark_path:
+            self.verify_status_label.configure(
+                text="❌ Please select all paths.", text_color="red"
+            )
+            return
 
-            try:
-                is_authenticated, extracted_watermarks = extract_watermark(
-                    self.watermarked_image_path, self.original_watermark_path
-                )
-                self.embed_status_label.configure(
-                    text=f"✅ Watermark Verified!\nSaved to:\n{output_image_path}",
+        try:
+            is_authenticated, _ = extract_watermark(
+                self.watermarked_image_path, self.original_watermark_path
+            )
+
+            if is_authenticated:
+
+                self.verify_status_label.configure(
+                    text=f"✅ Watermark Verified!",
                     text_color="green",
                 )
-            except Exception as e:
-                self.embed_status_label.configure(
-                    text=f"❌ Error: {str(e)}", text_color="red"
+            else:
+                self.verify_status_label.configure(
+                    text=f"❌ Watermark Not Found!",
+                    text_color="red",
                 )
+        except Exception as e:
+            self.embed_status_label.configure(
+                text=f"❌ Error: {str(e)}", text_color="red"
+            )
+
+    def handle_detect(self):
+        if not self.subject_image_path or not self.original_watermark_path:
+            self.detect_status_label.configure(
+                text="❌ Please select all paths.", text_color="red"
+            )
+            return
+
+        try:
+            is_tampered, tampered_image = detect_tampering(
+                self.subject_image_path, self.original_watermark_path
+            )
+
+            if is_tampered:
+
+                self.detect_status_label.configure(
+                    text=f"❌ Image has been tampered with!",
+                    text_color="red",
+                )
+
+                plt.imshow(tampered_image)
+
+                plt.show()
+            else:
+                self.detect_status_label.configure(
+                    text=f"✅ No tampering has been detected!",
+                    text_color="green",
+                )
+        except Exception as e:
+            self.embed_status_label.configure(
+                text=f"❌ Error: {str(e)}", text_color="red"
+            )
 
     def init_embedder_page(self):
         self.clear_window()
@@ -115,31 +160,40 @@ class App(ctk.CTk):
             self,
             text="+ Select Cover Image",
             width=250,
-            command=select_image("cover"),
+            command=lambda: self.get_image_path("cover"),
         )
         cover_btn.grid(pady=10)
+
+        self.cover_preview_label = ctk.CTkLabel(self, text="")
+        self.cover_preview_label.grid(pady=5)
 
         # Watermark Image Selector
         watermark_btn = ctk.CTkButton(
             self,
             text="+ Select Watermark Image",
             width=250,
-            command=select_image("watermark"),
+            command=lambda: self.get_image_path("watermark"),
         )
         watermark_btn.grid(pady=10)
+
+        self.watermark_preview_label = ctk.CTkLabel(self, text="")
+        self.watermark_preview_label.grid(pady=5)
 
         # Output Folder Selector
         output_btn = ctk.CTkButton(
             self,
             text="Choose Output Folder",
             width=250,
-            command=select_folder(),
+            command=lambda: self.get_folder_path,
         )
         output_btn.grid(pady=20)
 
         # Embed Watermark Button
         embed_btn = ctk.CTkButton(
-            self, text="✅ Embed Watermark", width=250, command=self.handle_embed
+            self,
+            text="✅ Embed Watermark",
+            width=250,
+            command=lambda: self.handle_embed,
         )
         embed_btn.grid(pady=20)
 
@@ -166,7 +220,7 @@ class App(ctk.CTk):
             self,
             text="+ Select Image",
             width=250,
-            command=select_image("watermarked"),
+            command=lambda: self.get_image_path("watermarked"),
         )
         watermarked_btn.grid(pady=10)
 
@@ -175,9 +229,18 @@ class App(ctk.CTk):
             self,
             text="+ Select Image",
             width=250,
-            command=select_image("original watermark"),
+            command=lambda: self.get_image_path("original watermark"),
         )
         orig_watermark_btn.grid(pady=10)
+
+        # Verify Auth Button
+        verify_btn = ctk.CTkButton(
+            self,
+            text="✅ Verification Complete",
+            width=250,
+            command=lambda: self.handle_verify,
+        )
+        verify_btn.grid(pady=20)
 
         # Label to show feedback
         self.verify_status_label = ctk.CTkLabel(
@@ -197,14 +260,38 @@ class App(ctk.CTk):
         title = ctk.CTkLabel(self, text="Tampering Detector", font=("Helvetica", 22))
         title.grid(pady=20)
 
-        # Cover Image Selector
-        cover_btn = ctk.CTkButton(
+        # Image Selector
+        sub_image_btn = ctk.CTkButton(
             self,
             text="+ Select Image",
             width=250,
-            command=self.select_cover_image,
+            command=lambda: self.get_image_path("subject image"),
         )
-        cover_btn.grid(pady=10)
+        sub_image_btn.grid(pady=10)
+
+        # Original Watermark Image Selector
+        orig_watermark_btn = ctk.CTkButton(
+            self,
+            text="+ Select Image",
+            width=250,
+            command=lambda: self.get_image_path("original watermark"),
+        )
+        orig_watermark_btn.grid(pady=10)
+
+        # Verify Auth Button
+        detct_btn = ctk.CTkButton(
+            self,
+            text="✅ Verification Complete",
+            width=250,
+            command=lambda: self.handle_detect,
+        )
+        detct_btn.grid(pady=20)
+
+        # Label to show feedback
+        self.detect_status_label = ctk.CTkLabel(
+            self, text="", text_color="green", font=("Arial", 14)
+        )
+        self.detect_status_label.grid(pady=10)
 
         # Back Button
         back_btn = ctk.CTkButton(
@@ -213,8 +300,48 @@ class App(ctk.CTk):
 
         back_btn.grid(pady=30)
 
+    def get_image_path(self, name):
+        path = filedialog.askopenfilename(
+            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff")]
+        )
+        if not path:
+            return  # Handle cancel case
+
+        img = Image.open(path).resize((150, 150))
+        img = ImageTk.PhotoImage(img)  # Convert for Tkinter
+
+        if name == "cover":
+            self.cover_image_path = path
+            self.cover_preview_label.configure(image=img, text="")
+            self.cover_preview_label.image = img  # Keep reference
+
+        elif name == "watermark":
+            self.watermark_image_path = path
+            self.watermark_preview_label.configure(image=img, text="")
+            self.watermark_preview_label.image = img
+
+        elif name == "watermarked":
+            self.watermarked_image_path = path
+
+        elif name == "original watermark":
+            self.original_watermark_path = path
+
+        elif name == "subject image":
+            self.subject_image_path = path
+
+    def get_folder_path(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            output_folder_path = folder
+            print("Output folder selected:", folder)
+        else:
+            print("Please try again")
+
+        return output_folder_path
+
 
 # Run the app
 if __name__ == "__main__":
     app = App()
+    app.grid_columnconfigure(0, weight=1)
     app.mainloop()

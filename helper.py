@@ -1,5 +1,4 @@
 from tkinter import filedialog
-from typing import S
 
 
 def select_image(name):
