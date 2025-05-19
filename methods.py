@@ -1,11 +1,8 @@
-import cv2  # OpenCV for image processing and SIFT
+import cv2
 import numpy as np
-import matplotlib.pyplot as plt
-import tkinter as tk  # For the desktop UI
-from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk  # For image handling in the UI
 import os
-import random
+from skimage.metrics import structural_similarity
+import math
 
 
 def detect_sift_keypoints(image_path, num_keypoints=None):
@@ -44,7 +41,7 @@ def detect_sift_keypoints(image_path, num_keypoints=None):
     return keypoints, descriptors, image
 
 
-def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_size=5):
+def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_size=3):
     """
     Embed a watermark into an image using SIFT keypoints.
 
@@ -59,56 +56,50 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
     """
     # Load watermark and convert to binary
     watermark = cv2.imread(watermark_image_path, cv2.IMREAD_GRAYSCALE)
-    _, watermark_binary = cv2.threshold(watermark, 127, 1, cv2.THRESH_BINARY)
+    watermark_small = cv2.resize(watermark, (3, 3), interpolation=cv2.INTER_AREA)
+    _, watermark_binary = cv2.threshold(
+        watermark_small, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+    )
+    watermark_binary = watermark_binary.astype(np.uint8)
 
     # Detect keypoints
-    keypoints, _, cover_image = detect_sift_keypoints(cover_image_path)
+    keypoints, _, cover_image = detect_sift_keypoints(cover_image_path, 6)
 
     # Get dimensions
-    watermark_height, watermark_width = watermark_binary.shape
-    cover_height, cover_width = cover_image.shape[:2]
-
-    # Check if watermark is larger than cover image
-    if watermark_height > cover_height or watermark_width > cover_width:
-        print("Warning: Watermark is larger than cover image.")
-        # You could automatically resize here:
-        scale_factor = (
-            min(cover_height / watermark_height, cover_width / watermark_width) * 0.8
-        )  # 80% of max possible size
-        new_width = int(watermark_width * scale_factor)
-        new_height = int(watermark_height * scale_factor)
-        watermark_binary = cv2.resize(
-            watermark_binary, (new_width, new_height), interpolation=cv2.INTER_AREA
-        )
-        print(f"Resized watermark to {new_width}x{new_height}")
+    wm_height, wm_width = watermark_binary.shape
 
     # Create a copy of the cover image
     watermarked_image = cover_image.copy()
 
     # For each keypoint, embed the watermark in the LSB
+
     for kp in keypoints:
+
         x, y = int(kp.pt[0]), int(kp.pt[1])
+        half = patch_size // 2
 
-        # Define region around keypoint
-        x_start = max(0, x - patch_size // 2)
-        y_start = max(0, y - patch_size // 2)
-        x_end = min(cover_image.shape[1], x + patch_size // 2 + 1)
-        y_end = min(cover_image.shape[0], y + patch_size // 2 + 1)
+        x_start = max(0, x - half)
+        y_start = max(0, y - half)
+        # x_end = min(cover_image.shape[1], x + half + 1)
+        # y_end = min(cover_image.shape[0], y + half + 1)
 
-        # For each pixel in the region
-        for i in range(y_start, y_end):
-            for j in range(x_start, x_end):
-                # Get watermark bit (wrap around if watermark is smaller)
-                w_i = i - y_start
-                w_j = j - x_start
-                watermark_bit = watermark_binary[w_i, w_j]
+        # Ensure patch stays inside bounds
+        if (
+            x - half < 0
+            or y - half < 0
+            or x + half >= watermarked_image.shape[1]
+            or y + half >= watermarked_image.shape[0]
+        ):
+            continue
 
-                # Modify LSB of each channel
-                for c in range(3):  # For RGB channels
-                    # Clear the LSB and set it to the watermark bit
-                    watermarked_image[i, j, c] = (
-                        watermarked_image[i, j, c] & 0xFE
-                    ) | watermark_bit
+        for i in range(patch_size):
+            for j in range(patch_size):
+                wm_bit = watermark_binary[i, j]
+                for c in range(3):  # RGB
+                    pixel_val = watermarked_image[y_start + i, x_start + j, c]
+                    watermarked_image[y_start + i, x_start + j, c] = (
+                        pixel_val & 0xFE  # clears LSB
+                    ) | wm_bit  # sets LSB
 
     # Save the watermarked image
     # cv2.imwrite(output_path, watermarked_image)
@@ -118,105 +109,154 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
     return watermarked_image, output_path
 
 
-def extract_watermark(watermarked_image_path, original_watermark_path, patch_size=5):
+def extract_watermark(
+    watermarked_image_path, original_watermark_path=None, patch_size=3
+):
     """
-    Extract watermark from an image using SIFT keypoints.
+    Extracts 3x3 binary watermark from 4 SIFT keypoints in the image.
 
     Args:
-        watermarked_image_path: Path to the potentially watermarked image
-        original_watermark_path: Path to the original watermark for comparison
-        patch_size: Size of patch around each keypoint
+        watermarked_image_path (str): Path to watermarked image.
+        original_watermark_path (str): Optional path to original 3x3 watermark for comparison.
+        patch_size (int): Size of patch around each keypoint (default: 3 for 3x3 neighborhood)
 
     Returns:
-        is_authenticated: Boolean indicating if watermark was found
-        extracted_watermarks: list of extracted watermarks at each keypoint
+        is_authenticated (bool): True if watermark matches expected pattern.
+        extracted_watermarks (dict): Dictionary of extracted 3x3 watermark matrices.
     """
-    # Load the watermarked image
-    keypoints, _, watermarked_image = detect_sift_keypoints(watermarked_image_path)
+    # Detect keypoints in the watermarked image
+    keypoints, _, watermarked_image = detect_sift_keypoints(watermarked_image_path, 6)
 
-    # Load original watermark if provided
-    original_watermark = None
-    if original_watermark_path:
-        original_watermark = cv2.imread(original_watermark_path, cv2.IMREAD_GRAYSCALE)
-        _, orig_watermark_binary = cv2.threshold(
-            original_watermark, 127, 1, cv2.THRESH_BINARY
+    if len(keypoints) < 4:
+        raise ValueError(
+            "Fewer than 4 keypoints detected. Cannot extract all watermarks."
         )
 
-    # Extract watermarks from each keypoint
-    # Create an empty watermark image
-    extracted_watermark = np.zeros(orig_watermark_binary.shape, dtype=np.uint8)
+    # Load and threshold the original 3x3 watermark if given
+    if original_watermark_path:
+        original = cv2.imread(original_watermark_path, cv2.IMREAD_GRAYSCALE)
+        # Resize to 3x3
+        watermark_small = cv2.resize(original, (3, 3), interpolation=cv2.INTER_AREA)
+        _, watermark_binary = cv2.threshold(
+            watermark_small, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        watermark_binary = watermark_binary.astype(np.uint8)
+        # watermark_normalized = watermark_small.astype(np.float32) / 255.0
+        # threshold = 0.5
+        # watermark_binary = (watermark_normalized > threshold).astype(np.uint8)
 
-    # Counter to track how many bits we've filled
-    bit_counter = np.zeros(orig_watermark_binary.shape, dtype=int)
+        # _, original_binary = cv2.threshold(watermark_small, 127, 1, cv2.THRESH_BINARY)
+
+    # Check if watermark is too uniform (all black or all white)
+    ones_count = np.sum(watermark_binary)
+    zeros_count = watermark_binary.size - ones_count
+
+    print(f"Watermark pattern: {watermark_binary.flatten()}")
+    print(f"Distribution: {ones_count} ones, {zeros_count} zeros")
+
+    # Dictionary to store extracted 3x3 watermark from each keypoint
     extracted_watermarks = {}
 
     for idx, kp in enumerate(keypoints):
         x, y = int(kp.pt[0]), int(kp.pt[1])
+        half = patch_size // 2
+        x_start = max(0, x - half)
+        y_start = max(0, y - half)
 
-        x_start = max(0, x - patch_size // 2)
-        y_start = max(0, y - patch_size // 2)
-        x_end = min(watermarked_image.shape[1], x + patch_size // 2 + 1)
-        y_end = min(watermarked_image.shape[0], y + patch_size // 2 + 1)
+        # Ensure patch stays inside bounds
+        if (
+            x - half < 0
+            or y - half < 0
+            or x + half >= watermarked_image.shape[1]
+            or y + half >= watermarked_image.shape[0]
+        ):
+            continue
 
-        for i in range(y_start, y_end):
-            for j in range(x_start, x_end):
+        # Extract 3x3 neighborhood around the keypoint
+        # p = watermarked_image[y - half : y + half + 1, x - half : x + half + 1]
 
-                # window
-                w_i = i - y_start
-                w_j = j - x_start
+        # Extract LSBs via majority vote across RGB channels
+        binary_patch = np.zeros((patch_size, patch_size), dtype=np.uint8)
+        for i in range(patch_size):
+            for j in range(patch_size):
+                wm_bit = watermark_binary[i, j]
+                bit_sum = 0
+                for c in range(3):  # RGB
+                    pixel_val = watermarked_image[y_start + i, x_start + j, c]
+                    bit_sum += pixel_val & 1  # extracts LSB
+                bit = 1 if bit_sum >= 2 else 0  # majority vote
 
-                # Extract LSB from blue channel (can be any channel)
-                r_bit = watermarked_image[i, j, 0] & 1
-                g_bit = watermarked_image[i, j, 1] & 1
-                b_bit = watermarked_image[i, j, 2] & 1
+                if bit == wm_bit:
+                    binary_patch[i, j] = bit
+                else:
+                    continue
 
-                # Majority vote
-                bit_sum = r_bit + g_bit + b_bit
-                watermark_bit = 1 if bit_sum >= 2 else 0  # Majority voting
+        extracted_watermarks[idx] = binary_patch
 
-                # Aggregate watermark bits
-                extracted_watermark[w_i, w_j] += watermark_bit
-                bit_counter[w_i, w_j] += 1
-
-        extracted_watermarks[idx] = extracted_watermark
-    print("extracted WM:", extracted_watermark)
-    print("bit counter:", bit_counter)
-
-    # If original watermark is provided, compare extracted watermarks with it
+    # === Authentication Logic ===
     is_authenticated = False
-    if orig_watermark_binary is not None:
-        print("orig WM:", orig_watermark_binary)
-        # Count how many extracted watermarks match the original
-        matching_watermarks = 0
-        extract_watermarks_num = len(extracted_watermarks)
-        print("length of extracted watermarks:", extract_watermarks_num)
-        rand_idx = random.randrange(0, extract_watermarks_num)
-
-        print(f"random watermark, index: {rand_idx}, {extracted_watermarks[rand_idx]}")
-        for idx, extracted in extracted_watermarks.items():
-            # Resize extracted to match original watermark
-            if extracted.shape != orig_watermark_binary.shape:
-                extracted_resized = cv2.resize(
-                    extracted,
-                    (orig_watermark_binary.shape[1], orig_watermark_binary.shape[0]),
+    if watermark_binary is not None:
+        match_count = 0
+        for patch in extracted_watermarks.values():
+            if patch.shape != watermark_binary.shape:
+                patch = cv2.resize(
+                    patch,
+                    (watermark_small.shape[1], watermark_small.shape[0]),
+                    interpolation=cv2.INTER_NEAREST,
                 )
 
-            else:
-                extracted_resized = extracted
+            print("patch: \n", patch)
+            print("binary WM:\n", watermark_binary)
 
-            # Compare
-            similarity = np.mean(extracted_resized == orig_watermark_binary)
-            if similarity > 0.7:  # If more than 70% similar
-                matching_watermarks += 1
+            # print("binary WM: \n", watermark_binary)
 
-        # If more than half of keypoints have matching watermarks, authenticate
-        is_authenticated = matching_watermarks > len(keypoints) // 2
-        print("matching waterwarks", matching_watermarks)
+            f1_score = eval(patch, watermark_binary)
 
-    return is_authenticated, extracted_watermark
+            # similarity = np.mean(patch == watermark_binary)
+            # score = structural_similarity(
+            #     watermark_binary, patch, win_size=3, gaussian_weights=True
+            # )
+            # print("sim score:", score)
+            # if score >= 0.66:  # 70%+ similarity
+            #     match_count += 1
+
+            # balanced_accuracy = 0.5 * (tpr + tnr)
+            # print(f"balanced accuracy: {balanced_accuracy}, F1 score: {f1_score}")
+            # if balanced_accuracy >= 0.70 and f1_score >= 0.5:  # 75%+ similarity
+            #     match_count += 1
+
+            # if TP >= patch.size // 2:
+            #     match_count += 1
+
+            # hamming_distance = np.sum(patch != watermark_binary)
+            # similarity = 1 - hamming_distance / 9  # scale from 0 to 1
+            # print("sim", similarity)
+            # if similarity >= 0.7:  # allow 1 bit mismatch (8/9 match)
+            #     match_count += 1
+
+            # likeness = np.sum(patch == watermark_binary)
+            # similarity = likeness / patch.size
+            # print("sim:", similarity)
+            # if similarity >= 0.7:
+            #     match_count += 1
+
+            bit_similarity = np.sum(patch == watermark_binary) / patch.size
+            print("bit sim", bit_similarity)
+            print("f1 score:", f1_score)
+
+            if f1_score is not math.isnan(f1_score):
+                if bit_similarity >= 0.7 and f1_score >= 0.8:
+                    match_count += 1
+
+        is_authenticated = (
+            match_count >= len(keypoints) // 2
+        )  # majority out of keypoints
+        print("match count", match_count)
+
+    return is_authenticated, extracted_watermarks
 
 
-def detect_tampering(image_path, original_watermark_path, patch_size=5):
+def detect_tampering(image_path, original_watermark_path, patch_size=3):
     """
     Detect if an image has been tampered with based on watermark consistency.
 
@@ -235,30 +275,39 @@ def detect_tampering(image_path, original_watermark_path, patch_size=5):
     )
 
     # Load original watermark
-    original_watermark = cv2.imread(original_watermark_path, cv2.IMREAD_GRAYSCALE)
-    _, original_watermark = cv2.threshold(original_watermark, 127, 1, cv2.THRESH_BINARY)
+    if original_watermark_path:
+        original = cv2.imread(original_watermark_path, cv2.IMREAD_GRAYSCALE)
+        # Resize to 3x3
+        watermark_small = cv2.resize(original, (3, 3), interpolation=cv2.INTER_AREA)
+        _, watermark_binary = cv2.threshold(
+            watermark_small, 0, 1, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        watermark_binary = watermark_binary.astype(np.uint8)
 
     # Load image for visualization
-    keypoints, _, image = detect_sift_keypoints(image_path)
+    keypoints, _, image = detect_sift_keypoints(image_path, 6)
     tampered_image = image.copy()
 
     # Check each extracted watermark
     inconsistent_keypoints = []
-    for idx, (kp, extracted) in enumerate(
-        zip(keypoints, extracted_watermarks.values())
-    ):
-        # Resize extracted to match original watermark
-        if extracted.shape != original_watermark.shape:
-            extracted_resized = cv2.resize(
-                extracted, (original_watermark.shape[1], original_watermark.shape[0])
+    for idx, (kp, patch) in enumerate(zip(keypoints, extracted_watermarks.values())):
+        if patch.shape != watermark_binary.shape:
+            patch = cv2.resize(
+                patch,
+                (watermark_small.shape[1], watermark_small.shape[0]),
+                interpolation=cv2.INTER_NEAREST,
             )
-        else:
-            extracted_resized = extracted
+        bit_similarity = np.sum(patch == watermark_binary) / patch.size
 
-        # Compare
-        similarity = np.mean(extracted_resized == original_watermark)
-        if similarity < 0.7:  # If less than 70% similar
-            inconsistent_keypoints.append(kp)
+        f1_score = eval(patch, watermark_binary)
+
+        bit_similarity = np.sum(patch == watermark_binary) / patch.size
+        print("bit sim", bit_similarity)
+        print("f1 score:", f1_score)
+
+        if f1_score is not math.isnan(f1_score):
+            if bit_similarity < 0.7 and f1_score < 0.8:
+                inconsistent_keypoints.append(kp)
 
     # Highlight inconsistent keypoints
     tampered_image = cv2.drawKeypoints(
@@ -269,9 +318,38 @@ def detect_tampering(image_path, original_watermark_path, patch_size=5):
         flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
     )
 
-    is_tampered = len(inconsistent_keypoints) > 0
+    print("inc. kp:", len(inconsistent_keypoints))
+
+    is_tampered = len(inconsistent_keypoints) > (
+        len(keypoints) // 2
+    )  # if majority of keypoints are inconsistent, it is tampered
 
     return is_tampered, tampered_image
+
+
+def eval(patch, watermark_binary):
+    TP = np.sum((patch == 1) & (watermark_binary == 1))
+    FP = np.sum((patch == 1) & (watermark_binary == 0))
+    TN = np.sum((patch == 0) & (watermark_binary == 0))
+    FN = np.sum((patch == 0) & (watermark_binary == 1))
+
+    P = np.sum(watermark_binary == 1)
+    N = np.sum(watermark_binary == 0)
+
+    precsion = TP / (TP + FP)
+    recall = TP / (TP + FN) if (TP + FN) else 0
+
+    print("TP:", TP)
+    print("FP:", FP)
+    print("TN:", TN)
+    print("FN:", FN)
+
+    print("precision:", precsion)
+    print("recall:", precsion)
+
+    # Calculate F1 score (mean of precision and recall)
+    f1_score = 2 * ((precsion * recall) / (precsion + recall))
+    return f1_score
 
 
 def save_incremented_image(output_dir, image):

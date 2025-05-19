@@ -13,7 +13,7 @@ class App(ctk.CTk):
         super().__init__()
 
         self.title("Image Steganography Toolkit")
-        self.geometry("600x500")
+        self.geometry("600x1000")
 
         # Initialize image paths
 
@@ -76,27 +76,9 @@ class App(ctk.CTk):
             )
             return
 
-        try:
-            _, output_image_path = embed_watermark(
-                self.cover_image_path,
-                self.watermark_image_path,
-                self.output_folder_path,
-            )
-
-            img = Image.open(output_image_path).resize((150, 150))
-            img = ImageTk.PhotoImage(img)  # Convert for Tkinter
-
-            self.embed_status_label.configure(image=img)
-            self.embed_status_label.image = img
-
-            self.embed_status_label2.configure(
-                text=f"✅ Watermark embedded!\nSaved to:\n{output_image_path}",
-                text_color="green",
-            )
-        except Exception as e:
-            self.embed_status_label.configure(
-                text=f"❌ Error: {str(e)}", text_color="red"
-            )
+        self.run_embedding(
+            self.cover_image_path, self.watermark_image_path, self.output_folder_path
+        )
 
     def handle_verify(self):
         if not self.watermarked_image_path or not self.original_watermark_path:
@@ -105,14 +87,7 @@ class App(ctk.CTk):
             )
             return
 
-        try:
-            self.run_extraction(
-                self.watermarked_image_path, self.original_watermark_path
-            )
-        except Exception as e:
-            self.verify_status_label.configure(
-                text=f"❌ Error: {str(e)}", text_color="red"
-            )
+        self.run_extraction(self.watermarked_image_path, self.original_watermark_path)
 
     def handle_detect(self):
         if not self.subject_image_path or not self.original_watermark_path:
@@ -121,30 +96,7 @@ class App(ctk.CTk):
             )
             return
 
-        try:
-            is_tampered, tampered_image = detect_tampering(
-                self.subject_image_path, self.original_watermark_path
-            )
-
-            if is_tampered:
-
-                self.detect_status_label.configure(
-                    text=f"❌ Image has been tampered with!",
-                    text_color="red",
-                )
-
-                plt.imshow(tampered_image)
-
-                plt.show()
-            else:
-                self.detect_status_label.configure(
-                    text=f"✅ No tampering has been detected!",
-                    text_color="green",
-                )
-        except Exception as e:
-            self.detect_status_label.configure(
-                text=f"❌ Error: {str(e)}", text_color="red"
-            )
+        self.run_detection(self.subject_image_path, self.original_watermark_path)
 
     def init_embedder_page(self):
         self.clear_window()
@@ -269,10 +221,10 @@ class App(ctk.CTk):
         title = ctk.CTkLabel(self, text="Tampering Detector", font=("Helvetica", 22))
         title.grid(pady=20)
 
-        # Image Selector
+        # Subject Image Selector
         sub_image_btn = ctk.CTkButton(
             self,
-            text="+ Select Image",
+            text="+ Select Subject Image",
             width=250,
             command=lambda: self.get_image_path("subject image"),
         )
@@ -283,7 +235,7 @@ class App(ctk.CTk):
         # Original Watermark Image Selector
         orig_watermark_btn = ctk.CTkButton(
             self,
-            text="+ Select Image",
+            text="+ Select Original Watermark Image",
             width=250,
             command=lambda: self.get_image_path("original watermark"),
         )
@@ -291,10 +243,10 @@ class App(ctk.CTk):
         self.orig_watermark_preview_label = ctk.CTkLabel(self, text="")
         self.orig_watermark_preview_label.grid(pady=5)
 
-        # Verify Auth Button
+        # Detect Tampering Button
         detct_btn = ctk.CTkButton(
             self,
-            text="✅ Verification Complete",
+            text="Detect Tampering",
             width=250,
             command=self.handle_detect,
         )
@@ -359,6 +311,71 @@ class App(ctk.CTk):
         else:
             print("Please try again")
 
+    def run_detection(self, subject_image_path, original_watermark_path):
+        self.detect_status_label.configure(
+            text="Decting Alterations...", text_color="orange"
+        )
+        app.update_idletasks()
+
+        def task():
+            try:
+                is_tampered, tampered_image = detect_tampering(
+                    subject_image_path, original_watermark_path
+                )
+
+                if is_tampered:
+
+                    self.detect_status_label.configure(
+                        text=f"❌ Image has been tampered with!",
+                        text_color="red",
+                    )
+
+                    plt.imshow(tampered_image)
+
+                    plt.show()
+                else:
+                    self.detect_status_label.configure(
+                        text=f"✅ No tampering has been detected!",
+                        text_color="green",
+                    )
+            except Exception as e:
+                self.detect_status_label.configure(
+                    text=f"❌ Error: {str(e)}", text_color="red"
+                )
+                print(str(e))
+
+        threading.Thread(target=task).start()
+
+    def run_embedding(self, cover_image_path, watermark_image_path, output_folder_path):
+        self.verify_status_label.configure(text="Embedding...", text_color="orange")
+        app.update_idletasks()
+
+        def task():
+            try:
+                _, output_image_path = embed_watermark(
+                    cover_image_path,
+                    watermark_image_path,
+                    output_folder_path,
+                )
+
+                img = Image.open(output_image_path).resize((150, 150))
+                img = ImageTk.PhotoImage(img)  # Convert for Tkinter
+
+                self.embed_status_label.configure(image=img)
+                self.embed_status_label.image = img
+
+                self.embed_status_label2.configure(
+                    text=f"✅ Watermark embedded!\nSaved to:\n{output_image_path}",
+                    text_color="green",
+                )
+            except Exception as e:
+                self.embed_status_label.configure(
+                    text=f"❌ Error: {str(e)}", text_color="red"
+                )
+                print(str(e))
+
+        threading.Thread(target=task).start()
+
     def run_extraction(self, watermarked_image_path, original_watermark_path):
 
         self.verify_status_label.configure(
@@ -367,21 +384,27 @@ class App(ctk.CTk):
         app.update_idletasks()
 
         def task():
-            is_authenticated, _ = extract_watermark(
-                watermarked_image_path, original_watermark_path
-            )
-
-            if is_authenticated:
-
-                self.verify_status_label.configure(
-                    text=f"✅ Watermark Verified!",
-                    text_color="green",
+            try:
+                is_authenticated, _ = extract_watermark(
+                    watermarked_image_path, original_watermark_path
                 )
-            else:
+
+                if is_authenticated:
+
+                    self.verify_status_label.configure(
+                        text=f"✅ Watermark Verified!",
+                        text_color="green",
+                    )
+                else:
+                    self.verify_status_label.configure(
+                        text=f"❌ Watermark Not Found!",
+                        text_color="red",
+                    )
+            except Exception as e:
                 self.verify_status_label.configure(
-                    text=f"❌ Watermark Not Found!",
-                    text_color="red",
+                    text=f"❌ Error: {str(e)}", text_color="red"
                 )
+                print(str(e))
 
         threading.Thread(target=task).start()
 
