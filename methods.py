@@ -1,8 +1,6 @@
 import cv2
 import numpy as np
 import os
-from sklearn.metrics import balanced_accuracy_score
-import matplotlib.pyplot as plt
 
 
 def detect_sift_keypoints(image_path, num_keypoints=None):
@@ -64,7 +62,7 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
     watermark_binary = watermark_binary.astype(np.uint8)
 
     # Detect keypoints
-    keypoints, _, cover_image = detect_sift_keypoints(cover_image_path, 6)
+    keypoints, _, cover_image = detect_sift_keypoints(cover_image_path, 1000)
 
     # Create a copy of the cover image
     watermarked_image = cover_image.copy()
@@ -78,6 +76,7 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
 
         x_start = max(0, x - half)
         y_start = max(0, y - half)
+        # top left coordinates of each patch
 
         # Ensure patch stays inside bounds
         if (
@@ -118,12 +117,9 @@ def extract_watermark(
         extracted_watermarks (dict): Dictionary of extracted 3x3 watermark matrices.
     """
     # Detect keypoints in the watermarked image
-    keypoints, _, watermarked_image = detect_sift_keypoints(watermarked_image_path, 6)
-
-    if len(keypoints) < 4:
-        raise ValueError(
-            "Fewer than 4 keypoints detected. Cannot extract all watermarks."
-        )
+    keypoints, _, watermarked_image = detect_sift_keypoints(
+        watermarked_image_path, 1000
+    )
 
     # Load and threshold the original 3x3 watermark if given
     if original_watermark_path:
@@ -160,7 +156,7 @@ def extract_watermark(
         for i in range(patch_size):
             for j in range(patch_size):
                 bit_sum = 0
-                for c in range(3):  # RGB
+                for c in range(3):  # iterating through RGB channels
                     pixel_val = watermarked_image[y_start + i, x_start + j, c]
                     bit_sum += pixel_val & 1  # extracts LSB
                 bit = 1 if bit_sum >= 2 else 0  # majority vote
@@ -177,13 +173,14 @@ def extract_watermark(
                 patch = cv2.resize(
                     patch,
                     (watermark_small.shape[1], watermark_small.shape[0]),
-                    interpolation=cv2.INTER_NEAREST,
+                    interpolation=cv2.INTER_AREA,
                 )
-            balanced_acc = balanced_accuracy_score(
-                watermark_binary.flatten(), patch.flatten()
-            )
-            if balanced_acc >= 0.7:
+
+            bit_similarity = np.sum(patch == watermark_binary) / patch.size
+
+            if bit_similarity == 1:
                 match_count += 1
+
         is_authenticated = (
             match_count >= len(keypoints) // 2
         )  # majority out of keypoints
@@ -222,24 +219,21 @@ def detect_tampering(image_path, original_watermark_path, patch_size=3):
         watermark_binary = watermark_binary.astype(np.uint8)
 
     # Load image for visualization
-    keypoints, _, image = detect_sift_keypoints(image_path, 6)
+    keypoints, _, image = detect_sift_keypoints(image_path, 1000)
     tampered_image = image.copy()
 
     # Check each extracted watermark
     inconsistent_keypoints = []
-    for idx, (kp, patch) in enumerate(zip(keypoints, extracted_watermarks.values())):
+    for kp, patch in zip(keypoints, extracted_watermarks.values()):
         if patch.shape != watermark_binary.shape:
             patch = cv2.resize(
                 patch,
                 (watermark_small.shape[1], watermark_small.shape[0]),
-                interpolation=cv2.INTER_NEAREST,
+                interpolation=cv2.INTER_AREA,
             )
-        balanced_acc = balanced_accuracy_score(
-            watermark_binary.flatten(), patch.flatten()
-        )
+        bit_similarity = np.sum(patch == watermark_binary) / patch.size
 
-        # if f1_score is not math.isnan(f1_score):
-        if balanced_acc < 0.7:
+        if bit_similarity < 1:
             inconsistent_keypoints.append(kp)
 
     # Highlight inconsistent keypoints
@@ -247,18 +241,13 @@ def detect_tampering(image_path, original_watermark_path, patch_size=3):
         tampered_image,
         inconsistent_keypoints,
         None,
-        color=(0, 0, 255),
+        color=(255, 0, 0),
         flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS,
     )
 
     is_tampered = len(inconsistent_keypoints) > (
         len(keypoints) // 2
     )  # if majority of keypoints are inconsistent, it is tampered
-
-    if is_tampered:
-        plt.imshow(tampered_image)
-
-        plt.show()
 
     return is_tampered, tampered_image
 

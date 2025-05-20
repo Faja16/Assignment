@@ -3,7 +3,7 @@ from tkinter import filedialog
 from methods import embed_watermark, extract_watermark, detect_tampering
 import os
 from PIL import Image, ImageTk
-import threading
+import matplotlib.pyplot as plt
 
 
 class App(ctk.CTk):
@@ -292,6 +292,11 @@ class App(ctk.CTk):
         )
         self.detect_status_label.pack(pady=10)
 
+        self.detect_status_label2 = ctk.CTkLabel(
+            self.scroll_fame, text="", text_color="green", font=("Arial", 14)
+        )
+        self.detect_status_label.pack(pady=10)
+
         # Back Button
         back_btn = ctk.CTkButton(
             self.scroll_fame, text="← Back", width=150, command=self.init_start_page
@@ -344,100 +349,90 @@ class App(ctk.CTk):
             print("Please try again")
 
     def run_detection(self, subject_image_path, original_watermark_path):
+        """helper function to run tampering detetction task"""
         self.detect_status_label.configure(
             text="Decting Alterations...", text_color="orange"
         )
-        app.update_idletasks()
 
-        def task():
-            try:
-                is_tampered, tampered_image = detect_tampering(
-                    subject_image_path, original_watermark_path
-                )
-
-                if is_tampered:
-
-                    self.detect_status_label.configure(
-                        text=f"❌ Image has been tampered with!",
-                        text_color="red",
-                    )
-
-                else:
-                    self.detect_status_label.configure(
-                        text=f"✅ No tampering has been detected!",
-                        text_color="green",
-                    )
-            except Exception as e:
+        try:
+            is_tampered, tampered_image = detect_tampering(
+                subject_image_path, original_watermark_path
+            )
+            if is_tampered:
                 self.detect_status_label.configure(
-                    text=f"❌ Error: {str(e)}", text_color="red"
+                    text=f"❌ Image has been tampered with!",
+                    text_color="red",
                 )
-                print(str(e))
+                plt.imshow(tampered_image)
+                plt.show()
 
-        threading.Thread(target=task).start()
-
-    def run_embedding(self, cover_image_path, watermark_image_path, output_folder_path):
-        self.embed_status_label.configure(text="Embedding...", text_color="orange")
-        app.update_idletasks()
-
-        def task():
-            try:
-                _, output_image_path = embed_watermark(
-                    cover_image_path,
-                    watermark_image_path,
-                    output_folder_path,
-                )
-
-                img = Image.open(output_image_path).resize((150, 150))
-                img = ImageTk.PhotoImage(img)  # Convert for Tkinter
-
-                self.embed_status_label.configure(text="")
-
-                self.embed_status_label.configure(image=img)
-                self.embed_status_label.image = img
-
-                self.embed_status_label2.configure(
-                    text=f"✅ Watermark embedded!\nSaved to:\n{os.path.basename(output_folder_path)}",
+            else:
+                self.detect_status_label.configure(
+                    text=f"✅ No tampering has been detected!",
                     text_color="green",
                 )
-            except Exception as e:
-                self.embed_status_label.configure(
-                    text=f"❌ Error: {str(e)}", text_color="red"
-                )
-                print(str(e))
+        except Exception as e:
+            self.detect_status_label.configure(
+                text=f"❌ Error: {str(e)}", text_color="red"
+            )
+            print(str(e))
 
-        threading.Thread(target=task).start()
+    def run_embedding(self, cover_image_path, watermark_image_path, output_folder_path):
+        """helper function to run embedding task"""
+        self.embed_status_label.configure(text="Embedding...", text_color="orange")
+
+        try:
+            _, output_image_path = embed_watermark(
+                cover_image_path,
+                watermark_image_path,
+                output_folder_path,
+            )
+
+            img = Image.open(output_image_path).resize((150, 150))
+            img = ImageTk.PhotoImage(img)  # Convert for Tkinter
+
+            self.embed_status_label.configure(text="")
+
+            self.embed_status_label.configure(image=img)
+            self.embed_status_label.image = img
+
+            self.embed_status_label2.configure(
+                text=f"✅ Watermark embedded!\nSaved to:\n{os.path.basename(output_folder_path)}",
+                text_color="green",
+            )
+        except Exception as e:
+            self.embed_status_label.configure(
+                text=f"❌ Error: {str(e)}", text_color="red"
+            )
+            print(str(e))
 
     def run_extraction(self, watermarked_image_path, original_watermark_path):
-
+        "helper to run verification"
         self.verify_status_label.configure(
             text="Authenticating...", text_color="orange"
         )
-        app.update_idletasks()
 
-        def task():
-            try:
-                is_authenticated, _ = extract_watermark(
-                    watermarked_image_path, original_watermark_path
-                )
+        try:
+            is_authenticated, _ = extract_watermark(
+                watermarked_image_path, original_watermark_path
+            )
 
-                if is_authenticated:
+            if is_authenticated:
 
-                    self.verify_status_label.configure(
-                        text=f"✅ Watermark Verified!",
-                        text_color="green",
-                    )
-                else:
-                    self.verify_status_label.configure(
-                        text=f"❌ Watermark Not Found!",
-                        text_color="red",
-                    )
-            except Exception as e:
                 self.verify_status_label.configure(
-                    text=f"❌ Error: {str(e)}", text_color="red"
+                    text=f"✅ Watermark Verified!",
+                    text_color="green",
                 )
-                print(str(e))
-
-        threading.Thread(target=task).start()
+            else:
+                self.verify_status_label.configure(
+                    text=f"❌ Watermark Not Found!",
+                    text_color="red",
+                )
+        except Exception as e:
+            self.verify_status_label.configure(
+                text=f"❌ Error: {str(e)}", text_color="red"
+            )
+            print(str(e))
 
 
 # Run the app
