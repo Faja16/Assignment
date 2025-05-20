@@ -1,9 +1,7 @@
-import cv2
 import customtkinter as ctk
 from tkinter import filedialog
 from methods import embed_watermark, extract_watermark, detect_tampering
 import os
-import matplotlib.pyplot as plt
 from PIL import Image, ImageTk
 import threading
 
@@ -11,9 +9,10 @@ import threading
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
+        ctk.set_default_color_theme("green")
 
         self.title("Image Steganography Toolkit")
-        self.geometry("600x1000")
+        self.geometry("600x600")
 
         # Initialize image paths
 
@@ -38,23 +37,41 @@ class App(ctk.CTk):
     def init_start_page(self):
         self.clear_window()
 
-        title = ctk.CTkLabel(self, text="Steganography Tool", font=("Helvetica", 24))
-        title.grid(pady=40)
+        title = ctk.CTkLabel(
+            self,
+            text="Steganography \n Tool",
+            font=("Lexend", 35),
+            text_color="purple",
+        )
+        title.pack(pady=40)
+
+        self.frame = ctk.CTkFrame(self, width=300, height=300)
+        self.frame.configure(width=0, height=0)
+        self.frame.pack(expand=True)
 
         embedder_btn = ctk.CTkButton(
-            self, text="Watermark Embedder", width=200, command=self.go_to_embedder
+            self.frame,
+            text="Watermark Embedder",
+            width=200,
+            command=self.go_to_embedder,
         )
-        embedder_btn.grid(pady=10, padx=50)
+        embedder_btn.pack(pady=10)
 
         verifier_btn = ctk.CTkButton(
-            self, text="Authenticity Verifier", width=200, command=self.go_to_verifier
+            self.frame,
+            text="Authenticity Verifier",
+            width=200,
+            command=self.go_to_verifier,
         )
-        verifier_btn.grid(pady=10)
+        verifier_btn.pack(pady=10)
 
         tamper_btn = ctk.CTkButton(
-            self, text="Tampering Detector", width=200, command=self.go_to_tampering
+            self.frame,
+            text="Tampering Detector",
+            width=200,
+            command=self.go_to_tampering,
         )
-        tamper_btn.grid(pady=10)
+        tamper_btn.pack(pady=10)
 
     def go_to_embedder(self):
         self.init_embedder_page()
@@ -101,174 +118,189 @@ class App(ctk.CTk):
     def init_embedder_page(self):
         self.clear_window()
 
-        title = ctk.CTkLabel(self, text="Watermark Embedder", font=("Helvetica", 22))
-        title.grid(pady=20)
+        self.scroll_fame = ctk.CTkScrollableFrame(self, width=500, height=500)
+        self.scroll_fame._scrollbar.configure(width=0, height=0)
+        self.scroll_fame.pack(expand=True)
+
+        title = ctk.CTkLabel(
+            self.scroll_fame, text="Watermark Embedder", font=("Helvetica", 22)
+        )
+        title.pack(pady=20)
 
         # Cover Image Selector
         cover_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Cover Image",
             width=250,
             command=lambda: self.get_image_path("cover"),
         )
-        cover_btn.grid(pady=10)
+        cover_btn.pack(pady=10)
 
-        self.cover_preview_label = ctk.CTkLabel(self, text="")
-        self.cover_preview_label.grid(pady=5)
+        self.cover_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.cover_preview_label.pack(pady=5)
 
         # Watermark Image Selector
         watermark_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Watermark Image",
             width=250,
             command=lambda: self.get_image_path("watermark"),
         )
-        watermark_btn.grid(pady=10)
+        watermark_btn.pack(pady=10)
 
-        self.watermark_preview_label = ctk.CTkLabel(self, text="")
-        self.watermark_preview_label.grid(pady=5)
+        self.watermark_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.watermark_preview_label.pack(pady=5)
 
         # Output Folder Selector
         output_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="Choose Output Folder",
             width=250,
             command=self.get_folder_path,
         )
-        output_btn.grid(pady=20)
+        output_btn.pack(pady=10)
 
-        self.output_preview_label = ctk.CTkLabel(self, text="")
-        self.output_preview_label.grid(pady=5)
+        self.output_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.output_preview_label.pack(pady=5)
 
         # Embed Watermark Button
         embed_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="✅ Embed Watermark",
             width=250,
             command=self.handle_embed,
         )
-        embed_btn.grid(pady=20)
+        embed_btn.pack(pady=5)
 
         # Label to show feedback
         self.embed_status_label = ctk.CTkLabel(
-            self, text="", text_color="green", font=("Arial", 14)
+            self.scroll_fame, text="", text_color="green", font=("Arial", 14)
         )
-        self.embed_status_label.grid(pady=10)
+        self.embed_status_label.pack(pady=5)
 
         self.embed_status_label2 = ctk.CTkLabel(
-            self, text="", text_color="green", font=("Arial", 14)
+            self.scroll_fame, text="", text_color="green", font=("Arial", 14)
         )
-        self.embed_status_label2.grid(pady=10)
+        self.embed_status_label2.pack(pady=5)
 
         # Back Button
         back_btn = ctk.CTkButton(
-            self, text="← Back", width=150, command=self.init_start_page
+            self.scroll_fame, text="← Back", width=150, command=self.init_start_page
         )
-        back_btn.grid(pady=30)
+        back_btn.pack(pady=5)
 
     def init_verifier_page(self):
         self.clear_window()
 
-        title = ctk.CTkLabel(self, text="Authenticity Verifier", font=("Helvetica", 22))
-        title.grid(pady=20)
+        self.scroll_fame = ctk.CTkScrollableFrame(self, width=500, height=500)
+        self.scroll_fame._scrollbar.configure(width=0, height=0)
+        self.scroll_fame.pack(expand=True)
+
+        title = ctk.CTkLabel(
+            self.scroll_fame, text="Authenticity Verifier", font=("Helvetica", 22)
+        )
+        title.pack(pady=20)
 
         # Watermarked Image Selector
         watermarked_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Watermarked Image",
             width=250,
             command=lambda: self.get_image_path("watermarked"),
         )
-        watermarked_btn.grid(pady=10)
-        self.watermarked_preview_label = ctk.CTkLabel(self, text="")
-        self.watermarked_preview_label.grid(pady=5)
+        watermarked_btn.pack(pady=10)
+        self.watermarked_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.watermarked_preview_label.pack(pady=5)
 
         # Original Watermark Image Selector
         orig_watermark_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Original Watermark Image",
             width=250,
             command=lambda: self.get_image_path("original watermark"),
         )
-        orig_watermark_btn.grid(pady=10)
-        self.orig_watermark_preview_label = ctk.CTkLabel(self, text="")
-        self.orig_watermark_preview_label.grid(pady=5)
+        orig_watermark_btn.pack(pady=10)
+        self.orig_watermark_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.orig_watermark_preview_label.pack(pady=5)
 
         # Verify Auth Button
         verify_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="Verify Watermark",
             width=250,
             command=self.handle_verify,
         )
-        verify_btn.grid(pady=20)
+        verify_btn.pack(pady=20)
 
         # Label to show feedback
         self.verify_status_label = ctk.CTkLabel(
-            self, text="", text_color="green", font=("Arial", 14)
+            self.scroll_fame, text="", text_color="green", font=("Arial", 14)
         )
-        self.verify_status_label.grid(pady=10)
+        self.verify_status_label.pack(pady=10)
 
         # Back Button
         back_btn = ctk.CTkButton(
-            self, text="← Back", width=150, command=self.init_start_page
+            self.scroll_fame, text="← Back", width=150, command=self.init_start_page
         )
-        back_btn.grid(pady=30)
+        back_btn.pack(pady=5)
 
     def init_detector_page(self):
         self.clear_window()
+        self.scroll_fame = ctk.CTkScrollableFrame(self, width=500, height=500)
+        self.scroll_fame._scrollbar.configure(width=0, height=0)
+        self.scroll_fame.pack(expand=True)
 
-        title = ctk.CTkLabel(self, text="Tampering Detector", font=("Helvetica", 22))
-        title.grid(pady=20)
+        title = ctk.CTkLabel(
+            self.scroll_fame, text="Tampering Detector", font=("Helvetica", 22)
+        )
+        title.pack(pady=20)
 
         # Subject Image Selector
         sub_image_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Subject Image",
             width=250,
             command=lambda: self.get_image_path("subject image"),
         )
-        sub_image_btn.grid(pady=10)
-        self.sub_image_preview_label = ctk.CTkLabel(self, text="")
-        self.sub_image_preview_label.grid(pady=5)
+        sub_image_btn.pack(pady=10)
+        self.sub_image_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.sub_image_preview_label.pack(pady=5)
 
         # Original Watermark Image Selector
         orig_watermark_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="+ Select Original Watermark Image",
             width=250,
             command=lambda: self.get_image_path("original watermark"),
         )
-        orig_watermark_btn.grid(pady=10)
-        self.orig_watermark_preview_label = ctk.CTkLabel(self, text="")
-        self.orig_watermark_preview_label.grid(pady=5)
+        orig_watermark_btn.pack(pady=10)
+        self.orig_watermark_preview_label = ctk.CTkLabel(self.scroll_fame, text="")
+        self.orig_watermark_preview_label.pack(pady=5)
 
         # Detect Tampering Button
         detct_btn = ctk.CTkButton(
-            self,
+            self.scroll_fame,
             text="Detect Tampering",
             width=250,
             command=self.handle_detect,
         )
-        detct_btn.grid(pady=20)
+        detct_btn.pack(pady=20)
 
         # Label to show feedback
         self.detect_status_label = ctk.CTkLabel(
-            self, text="", text_color="green", font=("Arial", 14)
+            self.scroll_fame, text="", text_color="green", font=("Arial", 14)
         )
-        self.detect_status_label.grid(pady=10)
+        self.detect_status_label.pack(pady=10)
 
         # Back Button
         back_btn = ctk.CTkButton(
-            self, text="← Back", width=150, command=self.init_start_page
+            self.scroll_fame, text="← Back", width=150, command=self.init_start_page
         )
 
-        back_btn.grid(pady=30)
+        back_btn.pack(pady=30)
 
     def get_image_path(self, name):
-        path = filedialog.askopenfilename(
-            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg;*.bmp;*.tif;*.tiff")]
-        )
+        path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.tif")])
         if not path:
             return  # Handle cancel case
 
@@ -330,9 +362,6 @@ class App(ctk.CTk):
                         text_color="red",
                     )
 
-                    plt.imshow(tampered_image)
-
-                    plt.show()
                 else:
                     self.detect_status_label.configure(
                         text=f"✅ No tampering has been detected!",
@@ -347,7 +376,7 @@ class App(ctk.CTk):
         threading.Thread(target=task).start()
 
     def run_embedding(self, cover_image_path, watermark_image_path, output_folder_path):
-        self.verify_status_label.configure(text="Embedding...", text_color="orange")
+        self.embed_status_label.configure(text="Embedding...", text_color="orange")
         app.update_idletasks()
 
         def task():
@@ -361,11 +390,13 @@ class App(ctk.CTk):
                 img = Image.open(output_image_path).resize((150, 150))
                 img = ImageTk.PhotoImage(img)  # Convert for Tkinter
 
+                self.embed_status_label.configure(text="")
+
                 self.embed_status_label.configure(image=img)
                 self.embed_status_label.image = img
 
                 self.embed_status_label2.configure(
-                    text=f"✅ Watermark embedded!\nSaved to:\n{output_image_path}",
+                    text=f"✅ Watermark embedded!\nSaved to:\n{os.path.basename(output_folder_path)}",
                     text_color="green",
                 )
             except Exception as e:
