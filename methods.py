@@ -66,6 +66,7 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
 
     # Create a copy of the cover image
     watermarked_image = cover_image.copy()
+    mask = np.zeros_like(watermarked_image, dtype=np.uint8)
 
     # For each keypoint, embed the watermark in the LSB
 
@@ -76,7 +77,9 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
 
         x_start = max(0, x - half)
         y_start = max(0, y - half)
-        # top left coordinates of each patch
+        x_end = x + half + 1
+        y_end = y + half + 1
+        # top left and right coordinates of each patch
 
         # Ensure patch stays inside bounds
         if (
@@ -87,14 +90,22 @@ def embed_watermark(cover_image_path, watermark_image_path, output_path, patch_s
         ):
             continue
 
+        if np.any(mask[y_start:y_end, x_start:x_end]):
+            continue
+
         for i in range(patch_size):
             for j in range(patch_size):
                 wm_bit = watermark_binary[i, j]
                 for c in range(3):  # RGB
+                    if np.any(mask[y_start + i, x_start + j, c]):
+                        continue
                     pixel_val = watermarked_image[y_start + i, x_start + j, c]
                     watermarked_image[y_start + i, x_start + j, c] = (
                         pixel_val & 0xFE  # clears LSB
                     ) | wm_bit  # sets LSB
+
+        # Mark patch area as written
+        mask[y_start:y_end, x_start:x_end] = 1
 
     output_path = save_incremented_image(output_path, watermarked_image)
 
@@ -253,6 +264,18 @@ def detect_tampering(image_path, original_watermark_path, patch_size=3):
 
 
 def save_incremented_image(output_dir, image):
+    """
+    saves watermark embedded images with incrementing value into provided directory path.
+
+    Args:
+        output_dir: Path to output directory
+        image: image being saved
+
+
+    Returns:
+        output_path: path of new embedded image
+
+    """
     base_name = "watermark_file"
     ext = ".png"
     i = 1
