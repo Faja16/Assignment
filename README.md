@@ -1,7 +1,7 @@
 
 # Steganography Tool
 
-This is a Python-based GUI application for image steganography using SIFT keypoints and LSB manipulation. It allows users to embed, verify, and detect tampering in watermarked images.
+This is a Python-based GUI application for image steganography using SIFT keypoints and LSB manipulation. It allows users to embed, verify, and detect tampering in watermarked images. Refer to walkthrough.mp4 for a demo of how the app works
 
 ## Features
 
